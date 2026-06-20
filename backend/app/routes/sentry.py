@@ -3,7 +3,7 @@ from sqlmodel import Session
 
 from app.database import get_session
 from app.models.incident import Incident
-from app.services.patch_agent_service import analyze_incident_with_agent
+from app.services.agent_service import analyze_incident_with_agent
 
 router = APIRouter(prefix="/api/sentry", tags=["sentry"])
 
