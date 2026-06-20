@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 from app.database import init_db
-from app.routes import health, patch_agent, sentry
+from app.routes import health, patch_agent, sentry, incidents
 import sentry_sdk
 
 sentry_sdk.init(
@@ -28,3 +28,4 @@ async def trigger_error():
 app.include_router(health.router)
 app.include_router(sentry.router)
 app.include_router(patch_agent.router)
+app.include_router(incidents.router)
