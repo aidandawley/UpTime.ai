@@ -1,59 +1,81 @@
-from fastapi import APIRouter, Depends, HTTPException
+import hashlib
+import hmac
+import json
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlmodel import Session
 
+from app.config import settings
 from app.database import get_session
 from app.models.incident import Incident
-from app.services.agent_service import analyze_incident_with_agent
 
 router = APIRouter(prefix="/api/sentry", tags=["sentry"])
 
 
 @router.post("/webhook")
-async def sentry_webhook(payload: dict, session: Session = Depends(get_session)):
-    issue = payload.get("data", {}).get("issue", {})
-    issue_id = issue.get("id")
+async def sentry_webhook(
+    request: Request,
+    session: Session = Depends(get_session),
+    sentry_hook_resource: str | None = Header(default=None, alias="Sentry-Hook-Resource"),
+    sentry_hook_signature: str | None = Header(default=None, alias="Sentry-Hook-Signature"),
+):
+    body = await request.body()
+
+    if settings.sentry_webhook_secret:
+        if not sentry_hook_signature:
+            raise HTTPException(status_code=401, detail="Missing Sentry webhook signature")
+
+        digest = hmac.new(
+            settings.sentry_webhook_secret.encode("utf-8"),
+            body,
+            hashlib.sha256,
+        ).hexdigest()
+
+        if not hmac.compare_digest(digest, sentry_hook_signature):
+            raise HTTPException(status_code=401, detail="Invalid Sentry webhook signature")
+
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    data = payload.get("data", {})
+    event = data.get("event") or {}
+    issue = data.get("issue") or {}
+
+    issue_id = event.get("issue_id") or issue.get("id")
 
     if not issue_id:
         raise HTTPException(status_code=400, detail="Missing Sentry issue id")
 
+    title = (
+        event.get("title")
+        or issue.get("title")
+        or event.get("message")
+        or "Unknown Sentry issue"
+    )
+    issue_url = event.get("web_url") or event.get("issue_url") or issue.get("permalink")
+    project = event.get("project") or payload.get("project")
+    triggered_rule = data.get("triggered_rule") or data.get("issue_alert", {}).get("title")
+
     incident = Incident(
         sentry_issue_id=str(issue_id),
-        title=issue.get("title", "Unknown Sentry issue"),
-        issue_url=issue.get("permalink"),
-        repo_full_name=payload.get("repo_full_name"),
-        status="detected",
+        title=title,
+        issue_url=issue_url,
+        repo_full_name=str(project) if project is not None else None,
+        status="received",
+        recommendation=f"Sentry alert received from rule: {triggered_rule}" if triggered_rule else None,
     )
 
     session.add(incident)
     session.commit()
     session.refresh(incident)
 
-    agent_payload = {
-        "repo_full_name": incident.repo_full_name or "unknown/repo",
-        "sentry_issue_id": incident.sentry_issue_id,
-        "issue_title": incident.title,
-        "issue_url": incident.issue_url,
-    }
-
-    try:
-        agent_result = await analyze_incident_with_agent(agent_payload)
-
-        incident.status = agent_result.get("status", "recommendation_created")
-        incident.severity = agent_result.get("severity", "unknown")
-        incident.recommendation = agent_result.get("recommendation")
-
-        session.add(incident)
-        session.commit()
-        session.refresh(incident)
-
-    except Exception as e:
-        incident.status = "agent_failed"
-        incident.recommendation = f"Agent failed: {str(e)}"
-        session.add(incident)
-        session.commit()
-
     return {
         "received": True,
         "incident_id": incident.id,
         "status": incident.status,
+        "resource": sentry_hook_resource,
+        "sentry_issue_id": incident.sentry_issue_id,
+        "title": incident.title,
     }
