@@ -3,10 +3,9 @@ import sys
 import time
 
 agents = [
-    "app.agents.monitoring_agent",
     "app.agents.investigation_agent",
-    "app.agents.patch_agent",
     "app.agents.github_agent",
+    "app.agents.patch_agent",
     "app.agents.validation_agent",
 ]
 

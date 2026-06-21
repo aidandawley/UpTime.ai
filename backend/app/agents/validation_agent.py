@@ -6,7 +6,7 @@ validation_agent = Agent(
     name="validation_agent",
     seed=VALIDATION_SEED,
     port=8005,
-    endpoint=["http://127.0.0.1:8005/submit"],
+    endpoint="http://127.0.0.1:8005/submit",
 )
 
 

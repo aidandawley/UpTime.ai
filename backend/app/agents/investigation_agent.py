@@ -10,7 +10,7 @@ investigation_agent = Agent(
     name="investigation_agent",
     seed=INVESTIGATION_SEED,
     port=8002,
-    endpoint=["http://127.0.0.1:8002/submit"],
+    endpoint="http://127.0.0.1:8002/submit",
 )
 
 
@@ -29,9 +29,10 @@ async def investigate(ctx: Context, sender: str, msg: IncidentMessage):
     )
 
     ctx.logger.info(
-        f"Forwarding investigation result to patch agent for incident {msg.incident_id}"
+        f"Forwarding investigation result to Github agent for incident {msg.incident_id}"
     )
-
+    ctx.logger.info(f"Sending to GitHub address: {GITHUB_AGENT_ADDRESS}")
+    
     await ctx.send(GITHUB_AGENT_ADDRESS, result)
 
 
