@@ -1,7 +1,20 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import logo from './assets/logo.png'
 
 type ServiceStatus = 'LIVE' | 'DOWN'
+
+type Incident = {
+  id: number
+  sentry_issue_id: string
+  title: string
+  status: string
+  severity: string
+  issue_url: string | null
+  repo_full_name: string | null
+  recommendation: string | null
+  pr_url: string | null
+  created_at: string
+}
 
 type EventItem = {
   id: string
@@ -22,49 +35,7 @@ type FixItem = {
   code: string
 }
 
-const events: EventItem[] = [
-  {
-    id: 'evt-101',
-    title: 'ZeroDivisionError',
-    code: 500,
-    time: '1 min ago',
-    severity: 'error',
-    route: 'GET /crash',
-    raw: `ZeroDivisionError: division by zero
-transaction: app.main.crash
-route: GET /crash
-handled: false
-file: backend/app/main.py:110
-line: return 1 / 0`,
-  },
-  {
-    id: 'evt-102',
-    title: 'Bogus backend request observed',
-    code: 404,
-    time: '8 min ago',
-    severity: 'warning',
-    route: 'GET /sentry-mega-error',
-    raw: `Bogus backend request observed
-event_type: bogus_backend_request
-method: GET
-route: /sentry-mega-error
-status_code: 404
-decision: likely client or scanner noise`,
-  },
-  {
-    id: 'evt-103',
-    title: 'Webhook recommendation state failed',
-    code: 500,
-    time: '18 min ago',
-    severity: 'error',
-    route: 'POST /api/sentry/webhook',
-    raw: `ImpossibleWebhookStateError: Webhook event entered an impossible recommendation state
-transaction: app.routes.sentry.sentry_webhook
-route: POST /api/sentry/webhook
-level: error
-agent_handoff: failed_to_start`,
-  },
-]
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8010'
 
 const fixes: FixItem[] = [
   {
@@ -113,8 +84,50 @@ const fixes: FixItem[] = [
 function App() {
   const [serviceStatus, setServiceStatus] = useState<ServiceStatus>('LIVE')
   const [health, setHealth] = useState(92)
-  const [openEvent, setOpenEvent] = useState(events[0].id)
+  const [events, setEvents] = useState<EventItem[]>([])
+  const [eventsLoading, setEventsLoading] = useState(true)
+  const [eventsError, setEventsError] = useState<string | null>(null)
+  const [openEvent, setOpenEvent] = useState('')
   const [openFix, setOpenFix] = useState(fixes[0].id)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadEvents() {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/incidents/`)
+
+        if (!response.ok) {
+          throw new Error(`Incident API returned ${response.status}`)
+        }
+
+        const incidents = (await response.json()) as Incident[]
+        const nextEvents = incidents.map(incidentToEvent)
+
+        if (!cancelled) {
+          setEvents(nextEvents)
+          setEventsError(null)
+          setOpenEvent((current) => current || nextEvents[0]?.id || '')
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setEventsError(error instanceof Error ? error.message : 'Unable to load incidents')
+        }
+      } finally {
+        if (!cancelled) {
+          setEventsLoading(false)
+        }
+      }
+    }
+
+    void loadEvents()
+    const intervalId = window.setInterval(loadEvents, 4000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [])
 
   const healthTone = useMemo(() => {
     if (health >= 80) {
@@ -220,28 +233,40 @@ function App() {
           </Panel>
 
           <Panel>
-            <PanelHeader title="Event History" meta={`${events.length} observed`} />
+            <PanelHeader title="Event History" meta={eventsLoading ? 'syncing' : `${events.length} observed`} />
             <p className="mt-4 text-base text-slate-400">
-              Exact Sentry events will populate here from the database. Expand an event to inspect the raw stored text.
+              Exact Sentry events sync from the database. Expand an event to inspect the stored incident text.
             </p>
 
             <div className="mt-6 max-h-[calc(100vh-230px)] space-y-3 overflow-y-auto pr-1">
+              {eventsError && (
+                <div className="rounded-[8px] border border-rose-300/20 bg-rose-300/10 px-4 py-3 text-sm font-semibold text-rose-100">
+                  Event sync issue: {eventsError}
+                </div>
+              )}
+
+              {!eventsLoading && !eventsError && events.length === 0 && (
+                <div className="rounded-[8px] border border-slate-300/10 bg-[#1a1c49] px-4 py-5 text-sm font-semibold text-slate-300">
+                  No incidents have been stored yet.
+                </div>
+              )}
+
               {events.map((eventItem) => (
-                <ExpandableRow
-                  key={eventItem.id}
-                  isOpen={openEvent === eventItem.id}
-                  onToggle={() => setOpenEvent(openEvent === eventItem.id ? '' : eventItem.id)}
-                  title={eventItem.title}
-                  subtitle={`${eventItem.route} - ${eventItem.time}`}
-                  badge={`${eventItem.code}`}
-                  badgeClassName={codeTone(eventItem.code)}
-                  meta={eventItem.severity}
-                >
-                  <pre className="whitespace-pre-wrap rounded-[6px] border border-cyan-300/10 bg-[#101238] p-4 font-mono text-sm leading-relaxed text-slate-200">
-                    {eventItem.raw}
-                  </pre>
-                </ExpandableRow>
-              ))}
+                  <ExpandableRow
+                    key={eventItem.id}
+                    isOpen={openEvent === eventItem.id}
+                    onToggle={() => setOpenEvent(openEvent === eventItem.id ? '' : eventItem.id)}
+                    title={eventItem.title}
+                    subtitle={`${eventItem.route} - ${eventItem.time}`}
+                    badge={`${eventItem.code}`}
+                    badgeClassName={codeTone(eventItem.code)}
+                    meta={eventItem.severity}
+                  >
+                    <pre className="whitespace-pre-wrap rounded-[6px] border border-cyan-300/10 bg-[#101238] p-4 font-mono text-sm leading-relaxed text-slate-200">
+                      {eventItem.raw}
+                    </pre>
+                  </ExpandableRow>
+                ))}
             </div>
           </Panel>
 
@@ -362,6 +387,83 @@ function codeTone(code: number) {
   }
 
   return 'bg-emerald-300/15 text-emerald-200'
+}
+
+function incidentToEvent(incident: Incident): EventItem {
+  const code = codeFromIncident(incident)
+
+  return {
+    id: String(incident.id),
+    title: incident.title || 'Untitled incident',
+    code,
+    time: relativeTime(incident.created_at),
+    severity: incident.severity || 'unknown',
+    route: incident.status,
+    raw: [
+      `incident_id: ${incident.id}`,
+      `sentry_issue_id: ${incident.sentry_issue_id}`,
+      `title: ${incident.title}`,
+      `status: ${incident.status}`,
+      `severity: ${incident.severity}`,
+      `repo_full_name: ${incident.repo_full_name ?? 'none'}`,
+      `issue_url: ${incident.issue_url ?? 'none'}`,
+      `created_at: ${incident.created_at}`,
+      incident.recommendation ? `recommendation:\n${incident.recommendation}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n'),
+  }
+}
+
+function codeFromIncident(incident: Incident) {
+  const text = `${incident.title} ${incident.status} ${incident.severity} ${incident.recommendation ?? ''}`.toLowerCase()
+
+  if (text.includes('404') || text.includes('not found') || text.includes('bogus')) {
+    return 404
+  }
+
+  if (text.includes('401') || text.includes('unauthorized')) {
+    return 401
+  }
+
+  if (incident.severity === 'warning') {
+    return 400
+  }
+
+  if (['error', 'fatal', 'high', 'critical'].includes(incident.severity)) {
+    return 500
+  }
+
+  return 200
+}
+
+function relativeTime(value: string) {
+  const timestamp = new Date(value).getTime()
+
+  if (Number.isNaN(timestamp)) {
+    return 'unknown time'
+  }
+
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000))
+
+  if (seconds < 60) {
+    return `${seconds}s ago`
+  }
+
+  const minutes = Math.floor(seconds / 60)
+
+  if (minutes < 60) {
+    return `${minutes}m ago`
+  }
+
+  const hours = Math.floor(minutes / 60)
+
+  if (hours < 24) {
+    return `${hours}h ago`
+  }
+
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
 }
 
 function clamp(value: number, min: number, max: number) {
