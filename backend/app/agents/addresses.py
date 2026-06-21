@@ -1,0 +1,5 @@
+MONITORING_SEED = "monitoring agent seed phrase"
+INVESTIGATION_SEED = "investigation agent seed phrase"
+PATCH_SEED = "patch agent seed phrase"
+GITHUB_SEED = "github agent seed phrase"
+VALIDATION_SEED = "validation agent seed phrase"

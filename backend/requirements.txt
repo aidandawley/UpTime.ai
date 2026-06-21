@@ -31,3 +31,13 @@ uagents
 
 # Logging
 structlog
+
+# env
+python-dotenv
+
+pydantic
+
+openai
+
+PyGithub
+

@@ -14,6 +14,8 @@ class Settings(BaseSettings):
 
     github_token: str | None = None
 
+    openai_api_key: str | None = None
+
     class Config:
         env_file = ".env"
 
