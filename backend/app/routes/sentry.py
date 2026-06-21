@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
 
 from app.database import get_session
@@ -11,11 +11,16 @@ router = APIRouter(prefix="/api/sentry", tags=["sentry"])
 @router.post("/webhook")
 async def sentry_webhook(payload: dict, session: Session = Depends(get_session)):
     issue = payload.get("data", {}).get("issue", {})
+    issue_id = issue.get("id")
+
+    if not issue_id:
+        raise HTTPException(status_code=400, detail="Missing Sentry issue id")
 
     incident = Incident(
-        sentry_issue_id=str(issue.get("id")),
+        sentry_issue_id=str(issue_id),
         title=issue.get("title", "Unknown Sentry issue"),
         issue_url=issue.get("permalink"),
+        repo_full_name=payload.get("repo_full_name"),
         status="detected",
     )
 

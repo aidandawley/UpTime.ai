@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     sentry_auth_token: str | None = None
     sentry_org_slug: str | None = None
     sentry_project_slug: str | None = None
+    sentry_dsn: str | None = None
 
     github_token: str | None = None
 

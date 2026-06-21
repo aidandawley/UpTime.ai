@@ -19,14 +19,3 @@ async def request_patch_from_agent(
         response = await client.post(url, json=payload)
         response.raise_for_status()
         return response.json()
-
-
-async def analyze_incident_with_agent(agent_payload: dict):
-    return {
-        "status": "recommendation_created",
-        "severity": "medium",
-        "recommendation": (
-            f"Investigate Sentry issue "
-            f"{agent_payload.get('sentry_issue_id')}"
-        ),
-    }
