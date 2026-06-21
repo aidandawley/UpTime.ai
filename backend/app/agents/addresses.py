@@ -1,5 +1,30 @@
-MONITORING_SEED = "monitoring agent seed phrase"
-INVESTIGATION_SEED = "investigation agent seed phrase"
-PATCH_SEED = "patch agent seed phrase"
-GITHUB_SEED = "github agent seed phrase"
-VALIDATION_SEED = "validation agent seed phrase"
+from uagents.crypto import Identity
+from uagents.resolver import RulesBasedResolver
+
+MONITORING_SEED = "monitoring-agent-secret-seed"
+INVESTIGATION_SEED = "investigation-agent-secret-seed"
+PATCH_SEED = "patch-agent-secret-seed"
+GITHUB_SEED = "github-agent-secret-seed"
+VALIDATION_SEED = "validation-agent-secret-seed"
+
+MONITORING_AGENT_ADDRESS = Identity.from_seed(MONITORING_SEED, 0).address
+INVESTIGATION_AGENT_ADDRESS = Identity.from_seed(INVESTIGATION_SEED, 0).address
+PATCH_AGENT_ADDRESS = Identity.from_seed(PATCH_SEED, 0).address
+GITHUB_AGENT_ADDRESS = Identity.from_seed(GITHUB_SEED, 0).address
+VALIDATION_AGENT_ADDRESS = Identity.from_seed(VALIDATION_SEED, 0).address
+
+MONITORING_AGENT_ENDPOINT = "http://127.0.0.1:8001/submit"
+INVESTIGATION_AGENT_ENDPOINT = "http://127.0.0.1:8002/submit"
+PATCH_AGENT_ENDPOINT = "http://127.0.0.1:8003/submit"
+GITHUB_AGENT_ENDPOINT = "http://127.0.0.1:8004/submit"
+VALIDATION_AGENT_ENDPOINT = "http://127.0.0.1:8005/submit"
+
+LOCAL_AGENT_ENDPOINTS = {
+    MONITORING_AGENT_ADDRESS: MONITORING_AGENT_ENDPOINT,
+    INVESTIGATION_AGENT_ADDRESS: INVESTIGATION_AGENT_ENDPOINT,
+    PATCH_AGENT_ADDRESS: PATCH_AGENT_ENDPOINT,
+    GITHUB_AGENT_ADDRESS: GITHUB_AGENT_ENDPOINT,
+    VALIDATION_AGENT_ADDRESS: VALIDATION_AGENT_ENDPOINT,
+}
+
+LOCAL_AGENT_RESOLVER = RulesBasedResolver(LOCAL_AGENT_ENDPOINTS)

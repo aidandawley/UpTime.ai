@@ -1,74 +1,74 @@
-import { type ReactNode, useMemo, useState } from 'react'
-import logoUrl from './assets/logo.png'
+import { type ReactNode, useMemo, useState } from "react";
+import logoUrl from "./assets/logo.png";
 
-type ServiceState = 'LIVE' | 'DOWN'
+type ServiceState = "LIVE" | "DOWN";
 
 type SentryEvent = {
-  id: number
-  summary: string
-  route: string
-  age: string
-  status: number
-  level: string
-  fullError: string
-}
+  id: number;
+  summary: string;
+  route: string;
+  age: string;
+  status: number;
+  level: string;
+  fullError: string;
+};
 
 type RecommendedChange = {
-  id: number
-  summary: string
-  detail: string
-  code?: string
-}
+  id: number;
+  summary: string;
+  detail: string;
+  code?: string;
+};
 
 const sentryEvents: SentryEvent[] = [
   {
     id: 1,
-    summary: 'Failed login check',
-    route: 'GET /me',
-    age: '2 min ago',
+    summary: "Failed login check",
+    route: "GET /me",
+    age: "2 min ago",
     status: 401,
-    level: 'warning',
+    level: "warning",
     fullError:
-      'Bogus backend request observed. Auth probe reached GET /me without valid credentials and returned 401.',
+      "Bogus backend request observed. Auth probe reached GET /me without valid credentials and returned 401.",
   },
   {
     id: 2,
-    summary: 'Unknown route requested',
-    route: 'GET /does-not-exist',
-    age: '8 min ago',
+    summary: "Unknown route requested",
+    route: "GET /does-not-exist",
+    age: "8 min ago",
     status: 404,
-    level: 'warning',
+    level: "warning",
     fullError:
-      'A client requested an unregistered route. The request matched no FastAPI handler and returned 404.',
+      "A client requested an unregistered route. The request matched no FastAPI handler and returned 404.",
   },
   {
     id: 3,
-    summary: 'Malformed todo payload',
-    route: 'POST /todos',
-    age: '13 min ago',
+    summary: "Malformed todo payload",
+    route: "POST /todos",
+    age: "13 min ago",
     status: 422,
-    level: 'error',
+    level: "error",
     fullError:
       'Request body did not match the TodoCreate schema. Required field "title" was absent from the JSON payload.',
   },
   {
     id: 4,
-    summary: 'Chat provider crash',
-    route: 'POST /chat',
-    age: '21 min ago',
+    summary: "Chat provider crash",
+    route: "POST /chat",
+    age: "21 min ago",
     status: 500,
-    level: 'critical',
+    level: "critical",
     fullError:
-      'Gemini client raised an upstream exception. Check API key, timeout behavior, and fallback response path.',
+      "Gemini client raised an upstream exception. Check API key, timeout behavior, and fallback response path.",
   },
-]
+];
 
 const recommendedChanges: RecommendedChange[] = [
   {
     id: 1,
-    summary: 'Group expected auth failures',
+    summary: "Group expected auth failures",
     detail:
-      'Reduce alert noise from normal unauthenticated checks while keeping scanner activity visible in Sentry.',
+      "Reduce alert noise from normal unauthenticated checks while keeping scanner activity visible in Sentry.",
     code: `- sentry_sdk.capture_message("Bogus backend request observed")
 + sentry_sdk.capture_message(
 +   "Expected unauthenticated probe observed",
@@ -77,9 +77,9 @@ const recommendedChanges: RecommendedChange[] = [
   },
   {
     id: 2,
-    summary: 'Add source fingerprinting',
+    summary: "Add source fingerprinting",
     detail:
-      'Make repeated bogus requests easier to sort by route and status without creating hundreds of separate issues.',
+      "Make repeated bogus requests easier to sort by route and status without creating hundreds of separate issues.",
     code: `+ with sentry_sdk.configure_scope() as scope:
 +   scope.fingerprint = [
 +     "bogus-backend-request",
@@ -90,56 +90,60 @@ const recommendedChanges: RecommendedChange[] = [
   },
   {
     id: 3,
-    summary: 'Forward critical events to intake app',
+    summary: "Forward critical events to intake app",
     detail:
-      'Send 500-level events directly to the second app while keeping lower-severity warnings in Sentry.',
+      "Send 500-level events directly to the second app while keeping lower-severity warnings in Sentry.",
   },
-]
+];
 
 function App() {
-  const [serviceState, setServiceState] = useState<ServiceState>('DOWN')
-  const [healthPercentage, setHealthPercentage] = useState(100)
-  const [openEvents, setOpenEvents] = useState<number[]>([3, 4])
-  const [openChanges, setOpenChanges] = useState<number[]>([1])
+  const [serviceState, setServiceState] = useState<ServiceState>("DOWN");
+  const [healthPercentage, setHealthPercentage] = useState(100);
+  const [openEvents, setOpenEvents] = useState<number[]>([3, 4]);
+  const [openChanges, setOpenChanges] = useState<number[]>([1]);
 
   const healthTone = useMemo(() => {
     if (healthPercentage >= 80) {
       return {
-        text: 'text-[#7cf083]',
-        border: 'border-[#78e86f]',
-        bar: 'bg-[#78e86f]',
-        label: 'Healthy',
-      }
+        text: "text-[#7cf083]",
+        border: "border-[#78e86f]",
+        bar: "bg-[#78e86f]",
+        label: "Healthy",
+      };
     }
 
     if (healthPercentage >= 70) {
       return {
-        text: 'text-[#f2d84b]',
-        border: 'border-[#e8ca38]',
-        bar: 'bg-[#e8ca38]',
-        label: 'Watch',
-      }
+        text: "text-[#f2d84b]",
+        border: "border-[#e8ca38]",
+        bar: "bg-[#e8ca38]",
+        label: "Watch",
+      };
     }
 
     return {
-      text: 'text-[#ff6f82]',
-      border: 'border-[#ef6478]',
-      bar: 'bg-[#ef6478]',
-      label: 'Risk',
-    }
-  }, [healthPercentage])
+      text: "text-[#ff6f82]",
+      border: "border-[#ef6478]",
+      bar: "bg-[#ef6478]",
+      label: "Risk",
+    };
+  }, [healthPercentage]);
 
   const toggleEvent = (id: number) => {
     setOpenEvents((open) =>
-      open.includes(id) ? open.filter((eventId) => eventId !== id) : [...open, id],
-    )
-  }
+      open.includes(id)
+        ? open.filter((eventId) => eventId !== id)
+        : [...open, id],
+    );
+  };
 
   const toggleChange = (id: number) => {
     setOpenChanges((open) =>
-      open.includes(id) ? open.filter((changeId) => changeId !== id) : [...open, id],
-    )
-  }
+      open.includes(id)
+        ? open.filter((changeId) => changeId !== id)
+        : [...open, id],
+    );
+  };
 
   return (
     <main className="min-h-screen bg-[#0d0b2c] text-[#f7f4ff]">
@@ -174,13 +178,13 @@ function App() {
         <section className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[470px_minmax(480px,1fr)_minmax(500px,1fr)]">
           <Panel
             title="Overall Health"
-            badge={serviceState === 'LIVE' ? 'Live' : 'Down'}
-            badgeTone={serviceState === 'LIVE' ? 'live' : 'down'}
+            badge={serviceState === "LIVE" ? "Live" : "Down"}
+            badgeTone={serviceState === "LIVE" ? "live" : "down"}
           >
             <div className="rounded-[1.65rem] border border-[#46447b] bg-[#373568] px-6 py-16 text-center">
               <p
                 className={`text-7xl font-black leading-none tracking-[-0.04em] sm:text-8xl ${
-                  serviceState === 'LIVE' ? 'text-[#74f082]' : 'text-[#ff6f82]'
+                  serviceState === "LIVE" ? "text-[#74f082]" : "text-[#ff6f82]"
                 }`}
               >
                 {serviceState}
@@ -189,10 +193,14 @@ function App() {
 
             <div className="mt-5 space-y-4">
               <label className="block">
-                <span className="text-sm font-black text-[#cbc7e6]">Service state</span>
+                <span className="text-sm font-black text-[#cbc7e6]">
+                  Service state
+                </span>
                 <select
                   value={serviceState}
-                  onChange={(event) => setServiceState(event.target.value as ServiceState)}
+                  onChange={(event) =>
+                    setServiceState(event.target.value as ServiceState)
+                  }
                   className="mt-2 h-12 w-full rounded-lg border border-[#2b2a61] bg-[#171740] px-4 text-base font-black text-white outline-none focus:border-[#6b73d6]"
                 >
                   <option>LIVE</option>
@@ -220,7 +228,9 @@ function App() {
 
               <div className="rounded-xl bg-[#181742] px-5 py-5">
                 <div className="flex items-end justify-between gap-4">
-                  <p className={`text-6xl font-black leading-none ${healthTone.text}`}>
+                  <p
+                    className={`text-6xl font-black leading-none ${healthTone.text}`}
+                  >
                     {healthPercentage}%
                   </p>
                   <p className="pb-2 text-lg font-black text-[#f0ecff]">
@@ -239,43 +249,55 @@ function App() {
 
           <Panel title="Events" badge={`${sentryEvents.length} observed`}>
             <p className="text-lg text-[#b7b3d2]">
-              Precise Sentry events land here. Expand one to inspect the full error.
+              Precise Sentry events land here. Expand one to inspect the full
+              error.
             </p>
 
             <div className="mt-12 max-h-[58vh] space-y-4 overflow-y-auto pr-1">
               {sentryEvents.map((event) => {
-                const isOpen = openEvents.includes(event.id)
+                const isOpen = openEvents.includes(event.id);
 
                 return (
                   <ExpandableRow
                     key={event.id}
                     isOpen={isOpen}
                     onToggle={() => toggleEvent(event.id)}
-                    accent={event.status >= 500 ? 'red' : event.status >= 422 ? 'pink' : 'yellow'}
+                    accent={
+                      event.status >= 500
+                        ? "red"
+                        : event.status >= 422
+                          ? "pink"
+                          : "yellow"
+                    }
                     summary={event.summary}
                     meta={`${event.route} - ${event.age}`}
                     chip={event.status}
                   >
-                    <p className="text-xl leading-7 text-[#d7d2ef]">{event.fullError}</p>
+                    <p className="text-xl leading-7 text-[#d7d2ef]">
+                      {event.fullError}
+                    </p>
                     <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                       <Metric label="Level" value={event.level} />
                       <Metric label="Route" value={event.route} />
                       <Metric label="Status" value={String(event.status)} />
                     </div>
                   </ExpandableRow>
-                )
+                );
               })}
             </div>
           </Panel>
 
-          <Panel title="Recommended Changes" badge={`${recommendedChanges.length} queued`}>
+          <Panel
+            title="Recommended Changes"
+            badge={`${recommendedChanges.length} queued`}
+          >
             <p className="text-lg text-[#b7b3d2]">
               AI-generated fixes can include exact code edits in the code box.
             </p>
 
             <div className="mt-12 max-h-[58vh] space-y-4 overflow-y-auto pr-1">
               {recommendedChanges.map((change) => {
-                const isOpen = openChanges.includes(change.id)
+                const isOpen = openChanges.includes(change.id);
 
                 return (
                   <ExpandableRow
@@ -295,35 +317,37 @@ function App() {
                       </div>
                     )}
                   </ExpandableRow>
-                )
+                );
               })}
             </div>
           </Panel>
         </section>
       </div>
     </main>
-  )
+  );
 }
 
 type PanelProps = {
-  title: string
-  badge: string
-  badgeTone?: 'live' | 'down'
-  children: ReactNode
-}
+  title: string;
+  badge: string;
+  badgeTone?: "live" | "down";
+  children: ReactNode;
+};
 
 function Panel({ title, badge, badgeTone, children }: PanelProps) {
   return (
     <article className="min-h-[580px] rounded-xl border border-[#383671] bg-[#2a2a5c] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
       <div className="flex items-center justify-between gap-4 border-b border-[#464376] pb-5">
-        <h2 className="text-3xl font-black tracking-[-0.03em] text-white">{title}</h2>
+        <h2 className="text-3xl font-black tracking-[-0.03em] text-white">
+          {title}
+        </h2>
         <span
           className={`rounded-full border px-4 py-2 text-sm font-bold ${
-            badgeTone === 'live'
-              ? 'border-[#4e8d65] bg-[#345d4b] text-[#99f3a6]'
-              : badgeTone === 'down'
-                ? 'border-[#7d4b68] bg-[#42315f] text-[#f2a3b2]'
-                : 'border-[#4d4b78] bg-[#3a396b] text-[#cbc7e6]'
+            badgeTone === "live"
+              ? "border-[#4e8d65] bg-[#345d4b] text-[#99f3a6]"
+              : badgeTone === "down"
+                ? "border-[#7d4b68] bg-[#42315f] text-[#f2a3b2]"
+                : "border-[#4d4b78] bg-[#3a396b] text-[#cbc7e6]"
           }`}
         >
           {badge}
@@ -331,18 +355,18 @@ function Panel({ title, badge, badgeTone, children }: PanelProps) {
       </div>
       <div className="pt-5">{children}</div>
     </article>
-  )
+  );
 }
 
 type ExpandableRowProps = {
-  isOpen: boolean
-  onToggle: () => void
-  summary: string
-  meta: string
-  chip?: string | number
-  accent?: 'yellow' | 'pink' | 'red'
-  children: ReactNode
-}
+  isOpen: boolean;
+  onToggle: () => void;
+  summary: string;
+  meta: string;
+  chip?: string | number;
+  accent?: "yellow" | "pink" | "red";
+  children: ReactNode;
+};
 
 function ExpandableRow({
   isOpen,
@@ -354,26 +378,30 @@ function ExpandableRow({
   children,
 }: ExpandableRowProps) {
   const chipTone =
-    accent === 'red'
-      ? 'text-[#ff7585]'
-      : accent === 'pink'
-        ? 'text-[#ff7f98]'
-        : 'text-[#f7dc4d]'
+    accent === "red"
+      ? "text-[#ff7585]"
+      : accent === "pink"
+        ? "text-[#ff7f98]"
+        : "text-[#f7dc4d]";
 
   return (
     <div
       className={`rounded-lg border bg-[#191944] px-4 py-4 transition-colors ${
-        isOpen ? 'border-[#3154a9] bg-[#20255a]' : 'border-[#313063]'
+        isOpen ? "border-[#3154a9] bg-[#20255a]" : "border-[#313063]"
       }`}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h3 className="text-lg font-black leading-6 text-white">{summary}</h3>
-          <p className="mt-1 text-base font-semibold leading-5 text-[#b8b3d2]">{meta}</p>
+          <p className="mt-1 text-base font-semibold leading-5 text-[#b8b3d2]">
+            {meta}
+          </p>
         </div>
         <div className="flex shrink-0 items-center gap-3">
           {chip ? (
-            <span className={`rounded-full bg-[#393966] px-3 py-1 text-lg font-black ${chipTone}`}>
+            <span
+              className={`rounded-full bg-[#393966] px-3 py-1 text-lg font-black ${chipTone}`}
+            >
               {chip}
             </span>
           ) : null}
@@ -382,20 +410,20 @@ function ExpandableRow({
             onClick={onToggle}
             className="h-10 rounded-lg border border-[#4b4a82] bg-[#414073] px-4 text-sm font-black text-white hover:bg-[#52518b]"
           >
-            {isOpen ? 'Close' : 'Open'}
+            {isOpen ? "Close" : "Open"}
           </button>
         </div>
       </div>
 
       {isOpen ? <div className="mt-5">{children}</div> : null}
     </div>
-  )
+  );
 }
 
 type MetricProps = {
-  label: string
-  value: string
-}
+  label: string;
+  value: string;
+};
 
 function Metric({ label, value }: MetricProps) {
   return (
@@ -403,7 +431,7 @@ function Metric({ label, value }: MetricProps) {
       <p className="text-xs font-black uppercase text-[#a6a1c5]">{label}</p>
       <p className="mt-1 text-xl text-[#ded9f5]">{value}</p>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;

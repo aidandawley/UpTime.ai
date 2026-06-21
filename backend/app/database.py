@@ -6,8 +6,24 @@ engine = create_engine(settings.database_url, echo=True)
 
 def init_db():
     SQLModel.metadata.create_all(engine)
+    _ensure_lightweight_migrations()
 
 
 def get_session():
     with Session(engine) as session:
         yield session
+
+
+def _ensure_lightweight_migrations():
+    with engine.begin() as connection:
+        table_info = connection.exec_driver_sql("PRAGMA table_info(recommendation)").fetchall()
+
+        if not table_info:
+            return
+
+        columns = {row[1] for row in table_info}
+
+        if "workflow_notes" not in columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE recommendation ADD COLUMN workflow_notes VARCHAR NOT NULL DEFAULT ''"
+            )
