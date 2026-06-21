@@ -44,6 +44,10 @@ async def sentry_webhook(
         print("[sentry] rejected webhook: invalid JSON payload")
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
+    print("Received Sentry webhook")
+    print(f"Sentry-Hook-Resource: {sentry_hook_resource}")
+    print(json.dumps(payload, indent=2, sort_keys=True))
+
     data = payload.get("data", {})
     event = data.get("event") or {}
     issue = data.get("issue") or {}
