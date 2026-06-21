@@ -1,6 +1,10 @@
 from uagents import Agent, Context
+
 from app.agents.models import IncidentMessage, InvestigationResult
-from app.agents.addresses import INVESTIGATION_SEED
+from app.agents.addresses import (
+    GITHUB_AGENT_ADDRESS,
+    INVESTIGATION_SEED,
+)
 
 investigation_agent = Agent(
     name="investigation_agent",
@@ -8,8 +12,6 @@ investigation_agent = Agent(
     port=8002,
     endpoint=["http://127.0.0.1:8002/submit"],
 )
-
-PATCH_AGENT_ADDRESS = "PASTE_PATCH_AGENT_ADDRESS_HERE"
 
 
 @investigation_agent.on_message(model=IncidentMessage)
@@ -26,7 +28,11 @@ async def investigate(ctx: Context, sender: str, msg: IncidentMessage):
         recommendation="Inspect stack trace, identify failing function, and create minimal safe patch.",
     )
 
-    await ctx.send(PATCH_AGENT_ADDRESS, result)
+    ctx.logger.info(
+        f"Forwarding investigation result to patch agent for incident {msg.incident_id}"
+    )
+
+    await ctx.send(GITHUB_AGENT_ADDRESS, result)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 from uagents import Agent, Context
+
 from app.agents.models import PatchResult, PullRequestResult
-from app.agents.addresses import GITHUB_SEED
+from app.agents.addresses import GITHUB_SEED, PATCH_AGENT_ADDRESS
 from app.services.github_service import create_demo_pr
 
 github_agent = Agent(
@@ -9,8 +10,6 @@ github_agent = Agent(
     port=8004,
     endpoint=["http://127.0.0.1:8004/submit"],
 )
-
-VALIDATION_AGENT_ADDRESS = "PASTE_VALIDATION_AGENT_ADDRESS_HERE"
 
 
 @github_agent.on_message(model=PatchResult)
@@ -32,7 +31,9 @@ async def create_pr(ctx: Context, sender: str, msg: PatchResult):
         changed_files=msg.changed_files,
     )
 
-    await ctx.send(VALIDATION_AGENT_ADDRESS, result)
+    ctx.logger.info(f"Forwarding PR result to validation agent: {pr_url}")
+
+    await ctx.send(PATCH_AGENT_ADDRESS, result)
 
 
 if __name__ == "__main__":

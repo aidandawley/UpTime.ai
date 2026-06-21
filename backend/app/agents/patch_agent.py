@@ -1,6 +1,6 @@
 from uagents import Agent, Context
 from app.agents.models import InvestigationResult, PatchResult
-from app.agents.addresses import PATCH_SEED
+from app.agents.addresses import PATCH_SEED, VALIDATION_AGENT_ADDRESS
 from app.services.llm_service import generate_patch_plan
 
 patch_agent = Agent(
@@ -9,9 +9,6 @@ patch_agent = Agent(
     port=8003,
     endpoint=["http://127.0.0.1:8003/submit"],
 )
-
-GITHUB_AGENT_ADDRESS = "PASTE_GITHUB_AGENT_ADDRESS_HERE"
-
 
 @patch_agent.on_message(model=InvestigationResult)
 async def create_patch(ctx: Context, sender: str, msg: InvestigationResult):
@@ -30,8 +27,10 @@ async def create_patch(ctx: Context, sender: str, msg: InvestigationResult):
         changed_files=msg.files_to_inspect or ["UNKNOWN_FILE"],
         patch_summary=patch_summary,
     )
-
-    await ctx.send(GITHUB_AGENT_ADDRESS, result)
+    ctx.logger.info(
+        f"Forwarding patch result to GitHub agent for incident {msg.incident_id}"
+    )
+    await ctx.send(VALIDATION_AGENT_ADDRESS, result)
 
 
 if __name__ == "__main__":
