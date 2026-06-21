@@ -26,6 +26,16 @@ type EventItem = {
   raw: string
 }
 
+type HealthScore = {
+  score: number
+  penalty: number
+  windowSize: number
+  criticalCount: number
+  errorCount: number
+  warningCount: number
+  lowCount: number
+}
+
 type Recommendation = {
   id: number
   incident_id: number
@@ -46,6 +56,7 @@ type Recommendation = {
 
 type FixItem = {
   id: string
+  incidentId: string
   title: string
   status: string
   summary: string
@@ -57,8 +68,7 @@ type FixItem = {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8010'
 
 function App() {
-  const [serviceStatus, setServiceStatus] = useState<ServiceStatus>('LIVE')
-  const [health, setHealth] = useState(92)
+  const serviceStatus: ServiceStatus = 'LIVE'
   const [events, setEvents] = useState<EventItem[]>([])
   const [eventsLoading, setEventsLoading] = useState(true)
   const [eventsError, setEventsError] = useState<string | null>(null)
@@ -146,8 +156,10 @@ function App() {
     }
   }, [])
 
+  const healthScore = useMemo(() => calculateHealthScore(events), [events])
+
   const healthTone = useMemo(() => {
-    if (health >= 80) {
+    if (healthScore.score >= 80) {
       return {
         text: 'text-emerald-300',
         bar: 'bg-emerald-400',
@@ -156,7 +168,7 @@ function App() {
       }
     }
 
-    if (health >= 70) {
+    if (healthScore.score >= 70) {
       return {
         text: 'text-yellow-300',
         bar: 'bg-yellow-300',
@@ -171,12 +183,47 @@ function App() {
       ring: 'border-rose-300/30',
       label: 'Critical',
     }
-  }, [health])
+  }, [healthScore.score])
 
   const statusTone =
     serviceStatus === 'LIVE'
       ? 'border-emerald-300/30 bg-emerald-300/10 text-emerald-200'
       : 'border-rose-300/30 bg-rose-300/10 text-rose-200'
+
+  async function deleteEvent(eventId: string) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/incidents/${eventId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error(`Delete returned ${response.status}`)
+      }
+
+      setEvents((current) => current.filter((eventItem) => eventItem.id !== eventId))
+      setFixes((current) => current.filter((fix) => fix.incidentId !== eventId))
+      setOpenEvent((current) => (current === eventId ? '' : current))
+    } catch (error) {
+      setEventsError(error instanceof Error ? error.message : 'Unable to delete incident')
+    }
+  }
+
+  async function deleteFix(fixId: string) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/recommendations/${fixId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error(`Delete returned ${response.status}`)
+      }
+
+      setFixes((current) => current.filter((fix) => fix.id !== fixId))
+      setOpenFix((current) => (current === fixId ? '' : current))
+    } catch (error) {
+      setFixesError(error instanceof Error ? error.message : 'Unable to delete recommendation')
+    }
+  }
 
   return (
     <main className="min-h-screen bg-[#11113a] px-5 py-5 text-slate-100">
@@ -210,41 +257,34 @@ function App() {
               </p>
             </div>
 
-            <div className="mt-6 space-y-4">
-              <label className="block">
-                <span className="text-sm font-semibold text-slate-300">Live status</span>
-                <select
-                  value={serviceStatus}
-                  onChange={(event) => setServiceStatus(event.target.value as ServiceStatus)}
-                  className="mt-2 h-12 w-full rounded-[6px] border border-slate-300/10 bg-[#17183f] px-4 text-sm font-bold text-white outline-none transition focus:border-cyan-300/60"
-                >
-                  <option>LIVE</option>
-                  <option>DOWN</option>
-                </select>
-              </label>
-
-              <label className="block">
-                <span className="text-sm font-semibold text-slate-300">Overall health tracker</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={health}
-                  onChange={(event) => setHealth(clamp(Number(event.target.value), 0, 100))}
-                  className="mt-2 h-12 w-full rounded-[6px] border border-slate-300/10 bg-[#17183f] px-4 text-sm font-bold text-white outline-none transition focus:border-cyan-300/60"
-                />
-              </label>
+            <div className="mt-6 rounded-[8px] border border-slate-300/10 bg-[#1f2150] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-semibold text-slate-300">Health window</span>
+                <span className="rounded-full bg-[#343767] px-3 py-1 text-xs font-black text-slate-200">
+                  latest {healthScore.windowSize || 0}
+                </span>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+                <HealthStat label="Critical" value={healthScore.criticalCount} tone="text-rose-200" />
+                <HealthStat label="Errors" value={healthScore.errorCount} tone="text-orange-200" />
+                <HealthStat label="Warnings" value={healthScore.warningCount} tone="text-yellow-200" />
+                <HealthStat label="Low" value={healthScore.lowCount} tone="text-slate-300" />
+              </div>
+              <div className="mt-4 flex items-center justify-between border-t border-slate-300/10 pt-3">
+                <span className="text-sm font-semibold text-slate-400">Incident penalty</span>
+                <span className="text-sm font-black text-slate-200">-{healthScore.penalty}</span>
+              </div>
             </div>
 
             <div className="mt-5 rounded-[8px] border border-slate-300/10 bg-[#191a49] p-5">
               <div className="flex items-end justify-between gap-4">
                 <p className={`text-6xl font-black leading-none tracking-normal ${healthTone.text}`}>
-                  {health}%
+                  {healthScore.score}%
                 </p>
                 <p className="pb-2 text-base font-bold text-slate-200">{healthTone.label}</p>
               </div>
               <div className="mt-5 h-2 overflow-hidden rounded-full bg-slate-900/60">
-                <div className={`h-full rounded-full ${healthTone.bar}`} style={{ width: `${health}%` }} />
+                <div className={`h-full rounded-full ${healthTone.bar}`} style={{ width: `${healthScore.score}%` }} />
               </div>
             </div>
           </Panel>
@@ -273,6 +313,7 @@ function App() {
                     key={eventItem.id}
                     isOpen={openEvent === eventItem.id}
                     onToggle={() => setOpenEvent(openEvent === eventItem.id ? '' : eventItem.id)}
+                    onDelete={() => void deleteEvent(eventItem.id)}
                     title={eventItem.title}
                     subtitle={`${eventItem.route} - ${eventItem.time}`}
                     badge={`${eventItem.code}`}
@@ -311,6 +352,7 @@ function App() {
                   key={fix.id}
                   isOpen={openFix === fix.id}
                   onToggle={() => setOpenFix(openFix === fix.id ? '' : fix.id)}
+                  onDelete={() => void deleteFix(fix.id)}
                   title={fix.title}
                   subtitle={fix.summary}
                   badge={fix.status}
@@ -368,9 +410,19 @@ function PanelHeader({
   )
 }
 
+function HealthStat({ label, value, tone }: { label: string; value: number; tone: string }) {
+  return (
+    <div className="rounded-[6px] border border-slate-300/10 bg-[#17183f] px-3 py-3">
+      <div className={`text-xl font-black leading-none ${tone}`}>{value}</div>
+      <div className="mt-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">{label}</div>
+    </div>
+  )
+}
+
 function ExpandableRow({
   isOpen,
   onToggle,
+  onDelete,
   title,
   subtitle,
   badge,
@@ -380,6 +432,7 @@ function ExpandableRow({
 }: {
   isOpen: boolean
   onToggle: () => void
+  onDelete: () => void
   title: string
   subtitle: string
   badge: string
@@ -389,23 +442,30 @@ function ExpandableRow({
 }) {
   return (
     <article className={`rounded-[8px] border bg-[#1a1c49] transition ${isOpen ? 'border-cyan-300/30' : 'border-slate-300/10'}`}>
-      <button
-        type="button"
-        onClick={onToggle}
-        className="grid w-full grid-cols-[1fr_auto] items-center gap-4 px-4 py-4 text-left"
-        aria-expanded={isOpen}
-      >
-        <span className="min-w-0">
+      <div className="grid w-full grid-cols-[1fr_auto] items-center gap-4 px-4 py-4">
+        <button type="button" onClick={onToggle} className="min-w-0 text-left" aria-expanded={isOpen}>
           <span className="block truncate text-lg font-extrabold tracking-normal text-white">{title}</span>
           <span className="mt-1 block text-sm font-medium text-slate-400">{subtitle}</span>
-        </span>
-        <span className="flex items-center gap-3">
+        </button>
+        <div className="flex items-center gap-3">
           <span className={`rounded-full px-3 py-1 text-sm font-black ${badgeClassName}`}>{badge}</span>
-          <span className="rounded-[6px] bg-[#343767] px-3 py-2 text-sm font-bold text-slate-100">
+          <button
+            type="button"
+            onClick={onToggle}
+            className="rounded-[6px] bg-[#343767] px-3 py-2 text-sm font-bold text-slate-100 transition hover:bg-[#43477f]"
+            aria-expanded={isOpen}
+          >
             {isOpen ? 'Close' : 'Open'}
-          </span>
-        </span>
-      </button>
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="rounded-[6px] border border-rose-300/20 bg-rose-300/10 px-3 py-2 text-sm font-bold text-rose-100 transition hover:bg-rose-300/20"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
       {isOpen && (
         <div className="border-t border-slate-300/10 px-4 pb-4 pt-4">
           <div className="mb-3 text-xs font-black uppercase tracking-[0.18em] text-slate-500">{meta}</div>
@@ -468,6 +528,7 @@ function recommendationToFix(recommendation: Recommendation): FixItem {
 
   return {
     id: String(recommendation.id),
+    incidentId: String(recommendation.incident_id),
     title: recommendation.title || `Recommendation for incident ${recommendation.incident_id}`,
     status: recommendation.validation_status,
     summary: recommendation.summary || recommendation.validation_summary,
@@ -497,6 +558,44 @@ function codeFromIncident(incident: Incident) {
   }
 
   return 200
+}
+
+function calculateHealthScore(events: EventItem[]): HealthScore {
+  const windowedEvents = events.slice(0, 10)
+  let penalty = 0
+  let criticalCount = 0
+  let errorCount = 0
+  let warningCount = 0
+  let lowCount = 0
+
+  for (const eventItem of windowedEvents) {
+    const severity = eventItem.severity.toLowerCase()
+    const text = `${eventItem.title} ${eventItem.route} ${severity}`.toLowerCase()
+
+    if (eventItem.code >= 500 || ['fatal', 'critical', 'high'].includes(severity)) {
+      penalty += 25
+      criticalCount += 1
+    } else if (['error', 'medium'].includes(severity) || text.includes('exception')) {
+      penalty += 15
+      errorCount += 1
+    } else if (eventItem.code >= 400 || ['warning', 'warn'].includes(severity)) {
+      penalty += 7
+      warningCount += 1
+    } else {
+      penalty += 3
+      lowCount += 1
+    }
+  }
+
+  return {
+    score: clamp(100 - penalty, 0, 100),
+    penalty,
+    windowSize: windowedEvents.length,
+    criticalCount,
+    errorCount,
+    warningCount,
+    lowCount,
+  }
 }
 
 function fixTone(status: string) {

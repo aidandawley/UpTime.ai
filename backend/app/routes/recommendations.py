@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
 from app.database import get_session
@@ -17,6 +17,22 @@ def list_recommendations(session: Session = Depends(get_session)):
         for recommendation in recommendations
         if not _contains_malformed_model_artifacts(recommendation)
     ]
+
+
+@router.delete("/{recommendation_id}")
+def delete_recommendation(
+    recommendation_id: int,
+    session: Session = Depends(get_session),
+):
+    recommendation = session.get(Recommendation, recommendation_id)
+
+    if recommendation is None:
+        raise HTTPException(status_code=404, detail="Recommendation not found")
+
+    session.delete(recommendation)
+    session.commit()
+
+    return {"deleted": True, "recommendation_id": recommendation_id}
 
 
 def _contains_malformed_model_artifacts(recommendation: Recommendation) -> bool:
