@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import init_db
-from app.routes import health, patch_agent, sentry, incidents, github
+from app.routes import health, patch_agent, sentry, incidents, github, recommendations
 import sentry_sdk
 
 if settings.sentry_dsn:
@@ -29,14 +29,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5174",
-        "http://127.0.0.1:5175",
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://localhost:5175",
-    ],
+    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1):517[0-9]$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -47,3 +40,4 @@ app.include_router(sentry.router)
 app.include_router(patch_agent.router)
 app.include_router(incidents.router)
 app.include_router(github.router)
+app.include_router(recommendations.router)

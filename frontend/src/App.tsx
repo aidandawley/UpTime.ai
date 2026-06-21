@@ -26,6 +26,24 @@ type EventItem = {
   raw: string
 }
 
+type Recommendation = {
+  id: number
+  incident_id: number
+  repo_full_name: string
+  title: string
+  summary: string
+  justification: string
+  code_patch: string
+  changed_files: string
+  tests_to_run: string
+  risk: string
+  workflow_notes: string
+  validation_status: string
+  validation_summary: string
+  warnings: string
+  created_at: string
+}
+
 type FixItem = {
   id: string
   title: string
@@ -33,53 +51,10 @@ type FixItem = {
   summary: string
   justification: string
   code: string
+  workflowNotes: string
 }
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8010'
-
-const fixes: FixItem[] = [
-  {
-    id: 'fix-201',
-    title: 'Guard crash route before division',
-    status: 'ready',
-    summary: 'Patch Agent recommends replacing the direct division with explicit validation.',
-    justification:
-      'The stack trace points directly to backend/app/main.py inside app.main.crash. A small guard keeps the endpoint from throwing an unhandled 500 while preserving a clear failure response for the caller.',
-    code: `--- backend/app/main.py
-+++ backend/app/main.py
-@@
--    return 1 / 0
-+    raise HTTPException(status_code=500, detail="Crash route triggered intentionally")`,
-  },
-  {
-    id: 'fix-202',
-    title: 'Ignore scanner-style 404 alerts',
-    status: 'review',
-    summary: 'Investigation Agent classified the bogus request as low-priority noise.',
-    justification:
-      'The event includes event_type=bogus_backend_request with a 404 status code. It should remain visible in history without spending GitHub/Patch/Validation cycles.',
-    code: `decision:
-  continue_pipeline: false
-  reason: "Likely expected client or scanner noise."
-  status_code: 404`,
-  },
-  {
-    id: 'fix-203',
-    title: 'Persist workflow trace outcome',
-    status: 'queued',
-    summary: 'Store the final validation summary for display in the recommended fixes panel.',
-    justification:
-      'Validation currently emits a clean result into the trace log. The frontend will need a stable DB/API source for title, justification, changed files, and code text.',
-    code: `recommended_next_step:
-  table: workflow_recommendation
-  fields:
-    - incident_id
-    - title
-    - justification
-    - code_patch
-    - validation_status`,
-  },
-]
 
 function App() {
   const [serviceStatus, setServiceStatus] = useState<ServiceStatus>('LIVE')
@@ -88,7 +63,10 @@ function App() {
   const [eventsLoading, setEventsLoading] = useState(true)
   const [eventsError, setEventsError] = useState<string | null>(null)
   const [openEvent, setOpenEvent] = useState('')
-  const [openFix, setOpenFix] = useState(fixes[0].id)
+  const [fixes, setFixes] = useState<FixItem[]>([])
+  const [fixesLoading, setFixesLoading] = useState(true)
+  const [fixesError, setFixesError] = useState<string | null>(null)
+  const [openFix, setOpenFix] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -122,6 +100,45 @@ function App() {
 
     void loadEvents()
     const intervalId = window.setInterval(loadEvents, 4000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadRecommendations() {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/recommendations/`)
+
+        if (!response.ok) {
+          throw new Error(`Recommendation API returned ${response.status}`)
+        }
+
+        const recommendations = (await response.json()) as Recommendation[]
+        const nextFixes = recommendations.map(recommendationToFix)
+
+        if (!cancelled) {
+          setFixes(nextFixes)
+          setFixesError(null)
+          setOpenFix((current) => current || nextFixes[0]?.id || '')
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setFixesError(error instanceof Error ? error.message : 'Unable to load recommendations')
+        }
+      } finally {
+        if (!cancelled) {
+          setFixesLoading(false)
+        }
+      }
+    }
+
+    void loadRecommendations()
+    const intervalId = window.setInterval(loadRecommendations, 4000)
 
     return () => {
       cancelled = true
@@ -271,12 +288,24 @@ function App() {
           </Panel>
 
           <Panel>
-            <PanelHeader title="Recommended Fixes" meta={`${fixes.length} queued`} />
+            <PanelHeader title="Recommended Fixes" meta={fixesLoading ? 'syncing' : `${fixes.length} queued`} />
             <p className="mt-4 text-base text-slate-400">
               Patch Agent recommendations will land here with justification and exact code guidance.
             </p>
 
             <div className="mt-6 max-h-[calc(100vh-230px)] space-y-3 overflow-y-auto pr-1">
+              {fixesError && (
+                <div className="rounded-[8px] border border-rose-300/20 bg-rose-300/10 px-4 py-3 text-sm font-semibold text-rose-100">
+                  Recommendation sync issue: {fixesError}
+                </div>
+              )}
+
+              {!fixesLoading && !fixesError && fixes.length === 0 && (
+                <div className="rounded-[8px] border border-slate-300/10 bg-[#1a1c49] px-4 py-5 text-sm font-semibold text-slate-300">
+                  No validated recommendations have been stored yet.
+                </div>
+              )}
+
               {fixes.map((fix) => (
                 <ExpandableRow
                   key={fix.id}
@@ -285,7 +314,7 @@ function App() {
                   title={fix.title}
                   subtitle={fix.summary}
                   badge={fix.status}
-                  badgeClassName="bg-[#36396d] text-slate-100"
+                  badgeClassName={fixTone(fix.status)}
                   meta="patch"
                 >
                   <div className="space-y-4">
@@ -293,6 +322,16 @@ function App() {
                     <pre className="max-h-72 overflow-auto rounded-[6px] border border-cyan-300/10 bg-[#101238] p-4 font-mono text-sm leading-relaxed text-cyan-100">
                       {fix.code}
                     </pre>
+                    {fix.workflowNotes && (
+                      <div className="rounded-[6px] border border-slate-300/10 bg-[#222554] p-4">
+                        <div className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                          Workflow Notes
+                        </div>
+                        <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-slate-300">
+                          {fix.workflowNotes}
+                        </pre>
+                      </div>
+                    )}
                   </div>
                 </ExpandableRow>
               ))}
@@ -415,6 +454,29 @@ function incidentToEvent(incident: Incident): EventItem {
   }
 }
 
+function recommendationToFix(recommendation: Recommendation): FixItem {
+  const metadata = [
+    `incident_id: ${recommendation.incident_id}`,
+    `repo_full_name: ${recommendation.repo_full_name}`,
+    `changed_files:\n${recommendation.changed_files || 'none'}`,
+    `tests_to_run:\n${recommendation.tests_to_run || 'none'}`,
+    `validation_summary: ${recommendation.validation_summary}`,
+    recommendation.warnings ? `warnings:\n${recommendation.warnings}` : null,
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+
+  return {
+    id: String(recommendation.id),
+    title: recommendation.title || `Recommendation for incident ${recommendation.incident_id}`,
+    status: recommendation.validation_status,
+    summary: recommendation.summary || recommendation.validation_summary,
+    justification: [recommendation.justification, metadata].filter(Boolean).join('\n\n'),
+    code: recommendation.code_patch,
+    workflowNotes: recommendation.workflow_notes,
+  }
+}
+
 function codeFromIncident(incident: Incident) {
   const text = `${incident.title} ${incident.status} ${incident.severity} ${incident.recommendation ?? ''}`.toLowerCase()
 
@@ -435,6 +497,18 @@ function codeFromIncident(incident: Incident) {
   }
 
   return 200
+}
+
+function fixTone(status: string) {
+  if (status === 'approved') {
+    return 'bg-emerald-300/15 text-emerald-200'
+  }
+
+  if (status === 'needs_review') {
+    return 'bg-yellow-300/15 text-yellow-200'
+  }
+
+  return 'bg-[#36396d] text-slate-100'
 }
 
 function relativeTime(value: string) {

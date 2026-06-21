@@ -74,11 +74,14 @@ class PatchRequest(Model):
 class PatchResult(Model):
     incident_id: int
     repo_full_name: str
+    recommendation_title: str
     changed_files: List[str]
     patch_summary: str
+    justification: str
     code_recommendation: str
     code_patch: str
     risk: str
+    workflow_notes: str = ""
     tests_to_run: List[str] = []
 
 

@@ -4,8 +4,10 @@ from app.agents.models import RepositoryContext, RepositoryFile
 from app.config import settings
 
 DEFAULT_CONTEXT_FILES = [
-    "README.md",
     "backend/app/main.py",
+    "backend/app/models.py",
+    "backend/app/database.py",
+    "README.md",
     "backend/app/routes/sentry.py",
     "backend/app/agents/models.py",
     "backend/app/agents/investigation_agent.py",

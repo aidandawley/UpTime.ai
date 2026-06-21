@@ -177,6 +177,14 @@ def _guess_files(msg: IncidentMessage) -> list[str]:
     text = _incident_text(msg)
     files: list[str] = []
 
+    if (
+        "indexerror" in text
+        or "string index out of range" in text
+        or "list index out of range" in text
+        or "todo" in text
+        or "create_todo" in text
+    ):
+        files.append("backend/app/main.py")
     if "sentry" in text or "webhook" in text:
         files.append("backend/app/routes/sentry.py")
     if "login" in text or "auth" in text or "401" in text:
@@ -229,6 +237,14 @@ def _is_expected_client_noise(msg: IncidentMessage, text: str) -> bool:
 
 
 def _root_cause_for(msg: IncidentMessage) -> str:
+    text = _incident_text(msg)
+
+    if "indexerror" in text or "string index out of range" in text:
+        return (
+            "IndexError suggests the failing route indexes into a string, list, "
+            "or split result before validating that the value exists."
+        )
+
     if msg.culprit:
         return f"Possible failure near {msg.culprit}."
 
@@ -240,6 +256,14 @@ def _root_cause_for(msg: IncidentMessage) -> str:
 
 def _recommendation_for(msg: IncidentMessage, files_to_inspect: list[str]) -> str:
     file_hint = ", ".join(files_to_inspect) if files_to_inspect else "the failing route"
+
+    if "indexerror" in _incident_text(msg) or "string index out of range" in _incident_text(msg):
+        return (
+            f"Inspect {file_hint} for direct indexing into strings, lists, or split results. "
+            "Recommend the smallest guard that returns a controlled 400 for malformed input "
+            "instead of allowing a 500-level IndexError."
+        )
+
     return (
         f"Inspect {file_hint}, reproduce the Sentry event, and recommend the smallest "
         "defensive code change. Return code guidance only, not a PR."

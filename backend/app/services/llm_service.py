@@ -22,8 +22,10 @@ def generate_patch_plan(
                 {
                     "role": "system",
                     "content": (
-                        "You are a senior software engineer. Return a safe code "
-                        "recommendation only. Do not claim a PR was created."
+                        "You are a senior software engineer. Return a safe, structured "
+                        "code recommendation only. Do not claim a PR was created. "
+                        "Do not include hidden reasoning, XML tags, tool calls, markdown fences, "
+                        "or any text outside the requested section headings."
                     ),
                 },
                 {
@@ -85,11 +87,18 @@ Repository files:
 {files}
 
 Return exactly these sections:
+RECOMMENDATION TITLE:
 PATCH SUMMARY:
+JUSTIFICATION:
 CODE RECOMMENDATION:
 CODE PATCH:
 RISK:
 TESTS TO RUN:
+
+If the root cause is an IndexError or string/list index out of range, inspect the loaded
+repository files for unsafe indexing patterns such as value[0], parts[1], token[0], or
+text.split(...)[1]. Recommend a small guard or input validation change that converts
+malformed input into a controlled 400-level response instead of a 500.
 """
 
 
@@ -100,8 +109,14 @@ def _fallback_patch_plan(
 ) -> str:
     file_hint = repository_context.files[0].path if repository_context.files else "UNKNOWN_FILE"
 
-    return f"""PATCH SUMMARY:
+    return f"""RECOMMENDATION TITLE:
+Review defensive handling in {file_hint}
+
+PATCH SUMMARY:
 Investigate {file_hint} for the suspected failure and make the smallest defensive change.
+
+JUSTIFICATION:
+The alert points to a backend failure path and the safest next step is a minimal guard or fallback around the suspected root cause.
 
 CODE RECOMMENDATION:
 {recommendation}
