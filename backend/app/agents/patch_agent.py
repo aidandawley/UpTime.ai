@@ -7,6 +7,7 @@ from app.agents.addresses import (
     PATCH_SEED,
     VALIDATION_AGENT_ADDRESS,
 )
+from app.agents.workflow_trace import trace_step
 from app.services.llm_service import generate_patch_plan
 
 patch_agent = Agent(
@@ -21,6 +22,15 @@ patch_agent = Agent(
 @patch_agent.on_message(model=PatchRequest)
 async def create_patch(ctx: Context, sender: str, msg: PatchRequest):
     ctx.logger.info(f"Creating code recommendation for incident {msg.incident_id}")
+    trace_step(
+        "patch",
+        msg.incident_id,
+        "started code recommendation",
+        severity=msg.severity,
+        suspected_root_cause=msg.suspected_root_cause,
+        repository_files=[file.path for file in msg.repository_context.files],
+        files_to_inspect=msg.files_to_inspect,
+    )
 
     try:
         raw_plan = generate_patch_plan(
@@ -29,8 +39,20 @@ async def create_patch(ctx: Context, sender: str, msg: PatchRequest):
             repository_context=msg.repository_context,
             recent_incidents=msg.recent_incidents,
         )
+        trace_step(
+            "patch",
+            msg.incident_id,
+            "LLM patch plan generated",
+            characters=len(raw_plan),
+        )
     except Exception as exc:
         ctx.logger.warning(f"Patch plan generation failed, using fallback: {exc}")
+        trace_step(
+            "patch",
+            msg.incident_id,
+            "LLM patch plan failed; using fallback recommendation",
+            error=str(exc),
+        )
         raw_plan = _fallback_raw_plan(msg)
 
     result = PatchResult(
@@ -47,15 +69,48 @@ async def create_patch(ctx: Context, sender: str, msg: PatchRequest):
     warnings = _warnings_for_result(result)
     for warning in warnings:
         ctx.logger.warning(f"[patch] incident {msg.incident_id}: {warning}")
+        trace_step(
+            "patch",
+            msg.incident_id,
+            "patch recommendation warning",
+            warning=warning,
+        )
 
+    trace_step(
+        "patch",
+        msg.incident_id,
+        "code recommendation ready",
+        changed_files=result.changed_files,
+        risk=result.risk,
+        tests_to_run=result.tests_to_run,
+    )
     ctx.logger.info(
         f"Forwarding code recommendation to Validation agent for incident {msg.incident_id}"
     )
+    trace_step(
+        "patch",
+        msg.incident_id,
+        "forwarding code recommendation to Validation Agent",
+    )
     status = await ctx.send(VALIDATION_AGENT_ADDRESS, result)
     ctx.logger.info(f"Validation agent delivery status: {status.status} - {status.detail}")
+    trace_step(
+        "patch",
+        msg.incident_id,
+        "Validation Agent handoff completed",
+        delivery=status.status,
+        detail=status.detail,
+    )
     if status.status.value != "delivered":
         ctx.logger.warning(
             f"[patch] Validation handoff looked unhealthy for incident {msg.incident_id}"
+        )
+        trace_step(
+            "patch",
+            msg.incident_id,
+            "Validation Agent handoff looked unhealthy",
+            delivery=status.status,
+            detail=status.detail,
         )
 
 

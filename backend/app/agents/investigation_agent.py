@@ -7,6 +7,7 @@ from app.agents.addresses import (
     INVESTIGATION_SEED,
     LOCAL_AGENT_RESOLVER,
 )
+from app.agents.workflow_trace import trace_step
 
 investigation_agent = Agent(
     name="investigation_agent",
@@ -20,15 +21,36 @@ investigation_agent = Agent(
 @investigation_agent.on_message(model=IncidentMessage)
 async def investigate(ctx: Context, sender: str, msg: IncidentMessage):
     ctx.logger.info(f"Investigating Sentry issue: {msg.sentry_issue_id}")
+    trace_step(
+        "investigation",
+        msg.incident_id,
+        "started investigation",
+        sentry_issue_id=msg.sentry_issue_id,
+        title=msg.title,
+        level=msg.level,
+        status_code=msg.status_code,
+        route=msg.route,
+        event_type=msg.event_type,
+    )
 
     if not msg.full_error:
         ctx.logger.warning(
             f"[investigation] incident {msg.incident_id} has no full_error context"
         )
+        trace_step(
+            "investigation",
+            msg.incident_id,
+            "missing detailed Sentry error context",
+        )
 
     if not msg.recent_incidents:
         ctx.logger.warning(
             f"[investigation] incident {msg.incident_id} has no recent incident context"
+        )
+        trace_step(
+            "investigation",
+            msg.incident_id,
+            "no recent incident history available",
         )
 
     actionable, reason = _is_actionable(msg)
@@ -54,21 +76,60 @@ async def investigate(ctx: Context, sender: str, msg: IncidentMessage):
         ctx.logger.warning(
             f"[investigation] stopping chain for incident {msg.incident_id}: {result.reason}"
         )
+        trace_step(
+            "investigation",
+            msg.incident_id,
+            "decision: stop pipeline",
+            reason=result.reason,
+            confidence=result.confidence,
+            severity=result.severity,
+        )
         return
 
     if not result.files_to_inspect:
         ctx.logger.warning(
             f"[investigation] no likely files guessed for incident {msg.incident_id}"
         )
+        trace_step(
+            "investigation",
+            msg.incident_id,
+            "no likely files guessed; continuing with repository defaults",
+            reason=result.reason,
+            severity=result.severity,
+        )
 
+    trace_step(
+        "investigation",
+        msg.incident_id,
+        "decision: continue pipeline",
+        reason=result.reason,
+        confidence=result.confidence,
+        severity=result.severity,
+        files_to_inspect=result.files_to_inspect,
+        suspected_root_cause=result.suspected_root_cause,
+    )
     ctx.logger.info(
         f"Forwarding actionable investigation to GitHub agent for incident {msg.incident_id}"
     )
     status = await ctx.send(GITHUB_AGENT_ADDRESS, result)
     ctx.logger.info(f"GitHub agent delivery status: {status.status} - {status.detail}")
+    trace_step(
+        "investigation",
+        msg.incident_id,
+        "GitHub Agent handoff completed",
+        delivery=status.status,
+        detail=status.detail,
+    )
     if status.status.value != "delivered":
         ctx.logger.warning(
             f"[investigation] GitHub handoff looked unhealthy for incident {msg.incident_id}"
+        )
+        trace_step(
+            "investigation",
+            msg.incident_id,
+            "GitHub Agent handoff looked unhealthy",
+            delivery=status.status,
+            detail=status.detail,
         )
 
 

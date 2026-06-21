@@ -6,6 +6,7 @@ from app.agents.addresses import (
     VALIDATION_AGENT_ENDPOINT,
     VALIDATION_SEED,
 )
+from app.agents.workflow_trace import trace_step
 
 validation_agent = Agent(
     name="validation_agent",
@@ -19,10 +20,23 @@ validation_agent = Agent(
 @validation_agent.on_message(model=PatchResult)
 async def validate_patch(ctx: Context, sender: str, msg: PatchResult):
     ctx.logger.info(f"Validating patch recommendation for incident {msg.incident_id}")
+    trace_step(
+        "validation",
+        msg.incident_id,
+        "started validation",
+        changed_files=msg.changed_files,
+        tests_to_run=msg.tests_to_run,
+    )
 
     warnings = _warnings_for(msg)
     for warning in warnings:
         ctx.logger.warning(f"[validation] incident {msg.incident_id}: {warning}")
+        trace_step(
+            "validation",
+            msg.incident_id,
+            "validation warning",
+            warning=warning,
+        )
 
     result = ValidationResult(
         incident_id=msg.incident_id,
@@ -37,6 +51,14 @@ async def validate_patch(ctx: Context, sender: str, msg: PatchResult):
     )
 
     ctx.logger.info(result.model_dump_json())
+    trace_step(
+        "validation",
+        msg.incident_id,
+        "validation finished",
+        looks_safe=result.looks_safe,
+        summary=result.validation_summary,
+        warnings=result.warnings,
+    )
 
 
 def _warnings_for(msg: PatchResult) -> list[str]:

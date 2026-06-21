@@ -12,6 +12,7 @@ from app.database import get_session
 from app.models.incident import Incident
 from app.agents.models import IncidentMessage, RecentIncident
 from app.agents.addresses import LOCAL_AGENT_RESOLVER
+from app.agents.workflow_trace import trace_step
 
 router = APIRouter(prefix="/api/sentry", tags=["sentry"])
 
@@ -73,6 +74,19 @@ async def sentry_webhook(
     context = _request_context_from_event(event)
     full_error = _full_error_from_event(event)
 
+    trace_step(
+        "webhook",
+        None,
+        "received Sentry webhook payload",
+        sentry_issue_id=issue_id,
+        resource=sentry_hook_resource,
+        title=title,
+        level=level,
+        status_code=context["status_code"],
+        route=context["route"],
+        event_type=context["event_type"],
+    )
+
     if not repo_full_name:
         print("[sentry] warning: no repo in payload and DEFAULT_REPO_FULL_NAME is unset")
 
@@ -95,6 +109,16 @@ async def sentry_webhook(
 
     if incident.id is None:
         raise HTTPException(status_code=500, detail="Incident was created without an id")
+
+    trace_step(
+        "webhook",
+        incident.id,
+        "saved incident to database",
+        sentry_issue_id=incident.sentry_issue_id,
+        title=incident.title,
+        severity=incident.severity,
+        repo=incident.repo_full_name,
+    )
 
     recent_incidents = _recent_incidents(session=session, exclude_incident_id=incident.id)
     workflow_repo_full_name = incident.repo_full_name or settings.default_repo_full_name
@@ -134,6 +158,13 @@ async def sentry_webhook(
             f"[sentry] forwarding incident {incident.id} to investigation "
             f"with {len(recent_incidents)} recent incidents"
         )
+        trace_step(
+            "webhook",
+            incident.id,
+            "forwarding incident to Investigation Agent",
+            recent_incidents=len(recent_incidents),
+            destination=settings.investigation_agent_address,
+        )
         delivery = await send_message(
             destination=settings.investigation_agent_address,
             message=msg,
@@ -149,6 +180,12 @@ async def sentry_webhook(
             raise RuntimeError(f"{delivery.status}: {delivery.detail}")
 
         print(f"[sentry] investigation delivery ok for incident {incident.id}")
+        trace_step(
+            "webhook",
+            incident.id,
+            "Investigation Agent accepted handoff",
+            delivery=delivery.status,
+        )
 
         incident.status = "agent_workflow_started"
         session.add(incident)
@@ -156,6 +193,12 @@ async def sentry_webhook(
         session.refresh(incident)
 
     except Exception as exc:
+        trace_step(
+            "webhook",
+            incident.id,
+            "Investigation Agent handoff failed",
+            error=str(exc),
+        )
         incident.status = "agent_workflow_failed_to_start"
         incident.recommendation = (
             f"{incident.recommendation or ''}\n"
