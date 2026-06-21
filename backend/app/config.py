@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     sentry_org_slug: str | None = None
     sentry_project_slug: str | None = None
     sentry_dsn: str | None = None
+    sentry_webhook_secret: str | None = None
 
     github_token: str | None = None
 
