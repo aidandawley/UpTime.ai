@@ -99,6 +99,12 @@ If the root cause is an IndexError or string/list index out of range, inspect th
 repository files for unsafe indexing patterns such as value[0], parts[1], token[0], or
 text.split(...)[1]. Recommend a small guard or input validation change that converts
 malformed input into a controlled 400-level response instead of a 500.
+
+If the root cause is AttributeError with NoneType and attribute id, treat it as a likely
+missing authenticated user/session object. Inspect the loaded files for current_user.id,
+user.id, owner_id, or Google auth/session lookup code. Recommend a small guard that
+returns 401 when the user is missing before any todo ownership or creation logic reads
+the id.
 """
 
 

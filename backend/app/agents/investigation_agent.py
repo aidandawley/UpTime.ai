@@ -185,6 +185,8 @@ def _guess_files(msg: IncidentMessage) -> list[str]:
         or "create_todo" in text
     ):
         files.append("backend/app/main.py")
+    if _is_missing_user_attribute_error(text):
+        files.append("backend/app/main.py")
     if "sentry" in text or "webhook" in text:
         files.append("backend/app/routes/sentry.py")
     if "login" in text or "auth" in text or "401" in text:
@@ -245,6 +247,12 @@ def _root_cause_for(msg: IncidentMessage) -> str:
             "or split result before validating that the value exists."
         )
 
+    if _is_missing_user_attribute_error(text):
+        return (
+            "AttributeError suggests an auth/user lookup returned None before code "
+            "accessed current_user.id or a similar user id field."
+        )
+
     if msg.culprit:
         return f"Possible failure near {msg.culprit}."
 
@@ -256,17 +264,33 @@ def _root_cause_for(msg: IncidentMessage) -> str:
 
 def _recommendation_for(msg: IncidentMessage, files_to_inspect: list[str]) -> str:
     file_hint = ", ".join(files_to_inspect) if files_to_inspect else "the failing route"
+    text = _incident_text(msg)
 
-    if "indexerror" in _incident_text(msg) or "string index out of range" in _incident_text(msg):
+    if "indexerror" in text or "string index out of range" in text:
         return (
             f"Inspect {file_hint} for direct indexing into strings, lists, or split results. "
             "Recommend the smallest guard that returns a controlled 400 for malformed input "
             "instead of allowing a 500-level IndexError."
         )
 
+    if _is_missing_user_attribute_error(text):
+        return (
+            f"Inspect {file_hint} for auth/session code that reads current_user.id or user.id "
+            "before proving the user exists. Recommend a small authentication guard that returns "
+            "401 when the user lookup fails instead of allowing a NoneType AttributeError."
+        )
+
     return (
         f"Inspect {file_hint}, reproduce the Sentry event, and recommend the smallest "
         "defensive code change. Return code guidance only, not a PR."
+    )
+
+
+def _is_missing_user_attribute_error(text: str) -> bool:
+    return (
+        "attributeerror" in text
+        and "nonetype" in text
+        and ("attribute 'id'" in text or 'attribute "id"' in text or ".id" in text)
     )
 
 

@@ -199,6 +199,9 @@ def _best_fallback_raw_plan(msg: PatchRequest) -> str:
     if _is_index_error(msg):
         return _index_error_raw_plan(msg)
 
+    if _is_missing_user_attribute_error(msg):
+        return _missing_user_attribute_raw_plan(msg)
+
     return _fallback_raw_plan(msg)
 
 
@@ -211,6 +214,21 @@ def _is_index_error(msg: PatchRequest) -> bool:
         ]
     ).lower()
     return "indexerror" in text or "string index out of range" in text or "list index out of range" in text
+
+
+def _is_missing_user_attribute_error(msg: PatchRequest) -> bool:
+    text = " ".join(
+        [
+            msg.suspected_root_cause,
+            msg.recommendation,
+            " ".join(incident.title for incident in msg.recent_incidents),
+        ]
+    ).lower()
+    return (
+        "attributeerror" in text
+        and "nonetype" in text
+        and ("attribute 'id'" in text or 'attribute \"id\"' in text or ".id" in text)
+    )
 
 
 def _index_error_raw_plan(msg: PatchRequest) -> str:
@@ -252,6 +270,44 @@ TESTS TO RUN:
 """
 
 
+def _missing_user_attribute_raw_plan(msg: PatchRequest) -> str:
+    file_hint = _best_code_file(msg)
+    route_hint = _route_hint(msg)
+
+    return f"""RECOMMENDATION TITLE:
+Guard authenticated todo routes before reading user id
+
+PATCH SUMMARY:
+The Sentry event is an AttributeError for NoneType.id, which usually means the request reached a todo route without a valid authenticated user object. Add an explicit authentication guard before reading current_user.id or user.id.
+
+JUSTIFICATION:
+The issue points near {route_hint}. A missing or invalid Google login session should produce a controlled 401 response, not a 500 crash. Checking the user object before accessing its id keeps the valid logged-in path unchanged while making unauthenticated requests predictable.
+
+CODE RECOMMENDATION:
+Inspect {file_hint} for code that reads current_user.id, user.id, or owner_id from an auth lookup result. Add a guard immediately after the lookup and before todo ownership or creation logic.
+
+CODE PATCH:
+--- {file_hint}
++++ {file_hint}
+@@
+-    owner_id = current_user.id
++    if current_user is None:
++        raise HTTPException(
++            status_code=401,
++            detail="Authentication required",
++        )
++    owner_id = current_user.id
+
+RISK:
+Low. The recommendation only changes the unauthenticated failure path from an unhandled 500 to an explicit 401.
+
+TESTS TO RUN:
+- Send the failing todo request without a valid Google session and confirm it returns 401 instead of 500
+- Send the same request with a valid logged-in user and confirm the todo behavior still works
+- Run the backend auth or todo route tests covering {file_hint}
+"""
+
+
 def _best_code_file(msg: PatchRequest) -> str:
     candidate_paths = [
         *msg.files_to_inspect,
@@ -284,6 +340,8 @@ def _workflow_notes_for(msg: PatchRequest, raw_plan: str) -> str:
 
     if _is_index_error(msg):
         notes.append("Patch: applied IndexError heuristic and looked for unsafe string/list indexing.")
+    elif _is_missing_user_attribute_error(msg):
+        notes.append("Patch: applied NoneType.id auth heuristic and looked for missing user guards.")
     elif _needs_fallback(raw_plan):
         notes.append("Patch: model output was malformed, so a guarded fallback recommendation was used.")
     else:
