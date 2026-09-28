@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlmodel import Field, SQLModel
@@ -21,4 +21,10 @@ class Recommendation(SQLModel, table=True):
     validation_summary: str
     warnings: str = ""
 
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    pr_url: Optional[str] = None
+    pr_number: Optional[int] = None
+    pr_branch: Optional[str] = None
+    pr_creation_status: str = "not_requested"
+    pr_creation_error: Optional[str] = None
+
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

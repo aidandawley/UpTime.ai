@@ -27,3 +27,16 @@ def _ensure_lightweight_migrations():
             connection.exec_driver_sql(
                 "ALTER TABLE recommendation ADD COLUMN workflow_notes VARCHAR NOT NULL DEFAULT ''"
             )
+
+        additions = {
+            "pr_url": "VARCHAR",
+            "pr_number": "INTEGER",
+            "pr_branch": "VARCHAR",
+            "pr_creation_status": "VARCHAR NOT NULL DEFAULT 'not_requested'",
+            "pr_creation_error": "VARCHAR",
+        }
+        for name, definition in additions.items():
+            if name not in columns:
+                connection.exec_driver_sql(
+                    f"ALTER TABLE recommendation ADD COLUMN {name} {definition}"
+                )
