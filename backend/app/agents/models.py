@@ -91,3 +91,23 @@ class ValidationResult(Model):
     looks_safe: bool
     validation_summary: str
     warnings: List[str] = []
+
+
+class PullRequestRequest(Model):
+    incident_id: int
+    sentry_issue_id: Optional[str] = None
+    repo_full_name: str
+    recommendation_title: str
+    justification: str
+    code_patch: str
+    changed_files: List[str]
+    risk: str
+    tests_to_run: List[str] = []
+
+
+class PullRequestResult(Model):
+    status: str
+    branch_name: str
+    pr_url: Optional[str] = None
+    pr_number: Optional[int] = None
+    error: Optional[str] = None

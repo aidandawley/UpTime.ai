@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import logoUrl from "./assets/logo.png";
 
 type ServiceState = "LIVE" | "DOWN";
@@ -15,9 +15,20 @@ type SentryEvent = {
 
 type RecommendedChange = {
   id: number;
+  incident_id?: number;
+  title?: string;
   summary: string;
-  detail: string;
+  detail?: string;
+  justification?: string;
   code?: string;
+  code_patch?: string;
+  validation_status?: string;
+  validation_summary?: string;
+  pr_creation_status?: string;
+  pr_creation_error?: string | null;
+  pr_url?: string | null;
+  pr_number?: number | null;
+  pr_branch?: string | null;
 };
 
 const sentryEvents: SentryEvent[] = [
@@ -96,11 +107,46 @@ const recommendedChanges: RecommendedChange[] = [
   },
 ];
 
+const apiBaseUrl =
+  import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") ??
+  "http://localhost:8000";
+
 function App() {
   const [serviceState, setServiceState] = useState<ServiceState>("DOWN");
   const [healthPercentage, setHealthPercentage] = useState(100);
   const [openEvents, setOpenEvents] = useState<number[]>([3, 4]);
   const [openChanges, setOpenChanges] = useState<number[]>([1]);
+  const [changes, setChanges] = useState<RecommendedChange[]>(recommendedChanges);
+  const [prPending, setPrPending] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch(`${apiBaseUrl}/api/recommendations/`)
+      .then((response) => {
+        if (!response.ok) throw new Error("Recommendations are unavailable");
+        return response.json() as Promise<RecommendedChange[]>;
+      })
+      .then(setChanges)
+      .catch(() => {
+        // Keep the existing demo recommendations when the backend is offline.
+      });
+  }, []);
+
+  const createPr = async (id: number) => {
+    setPrPending(id);
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/api/recommendations/${id}/pull-request`,
+        { method: "POST" },
+      );
+      if (!response.ok) throw new Error("Pull request creation failed");
+      const updated = (await response.json()) as RecommendedChange;
+      setChanges((current) =>
+        current.map((change) => (change.id === id ? updated : change)),
+      );
+    } finally {
+      setPrPending(null);
+    }
+  };
 
   const healthTone = useMemo(() => {
     if (healthPercentage >= 80) {
@@ -289,14 +335,14 @@ function App() {
 
           <Panel
             title="Recommended Changes"
-            badge={`${recommendedChanges.length} queued`}
+            badge={`${changes.length} queued`}
           >
             <p className="text-lg text-[#b7b3d2]">
               AI-generated fixes can include exact code edits in the code box.
             </p>
 
             <div className="mt-12 max-h-[58vh] space-y-4 overflow-y-auto pr-1">
-              {recommendedChanges.map((change) => {
+              {changes.map((change) => {
                 const isOpen = openChanges.includes(change.id);
 
                 return (
@@ -304,18 +350,65 @@ function App() {
                     key={change.id}
                     isOpen={isOpen}
                     onToggle={() => toggleChange(change.id)}
-                    summary={change.summary}
-                    meta={change.detail}
+                    summary={change.title ?? change.summary}
+                    meta={change.justification ?? change.detail ?? ""}
                   >
-                    {change.code ? (
+                    {change.code_patch || change.code ? (
                       <pre className="mt-2 max-h-72 overflow-auto rounded-xl border border-[#414078] bg-[#111034] p-4 text-sm leading-6 text-[#e7e2ff]">
-                        <code>{change.code}</code>
+                        <code>{change.code_patch ?? change.code}</code>
                       </pre>
                     ) : (
                       <div className="mt-2 rounded-xl border border-dashed border-[#504e86] bg-[#242456] p-5 text-[#aaa6ca]">
                         Code recommendation area
                       </div>
                     )}
+                    {change.validation_status ? (
+                      <div className="mt-4 rounded-xl border border-[#414078] bg-[#191944] p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-black uppercase tracking-wide text-[#aaa6ca]">
+                              Validation: {change.validation_status}
+                            </p>
+                            <p className="mt-1 text-sm text-[#d7d2ef]">
+                              {change.validation_summary}
+                            </p>
+                          </div>
+                          {change.pr_url ? (
+                            <a
+                              href={change.pr_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="rounded-lg bg-[#78e86f] px-4 py-2 text-sm font-black text-[#102415] hover:bg-[#92f18b]"
+                            >
+                              Open PR #{change.pr_number}
+                            </a>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={
+                                change.validation_status !== "approved" ||
+                                prPending === change.id
+                              }
+                              onClick={() => void createPr(change.id)}
+                              className="rounded-lg bg-[#6b73d6] px-4 py-2 text-sm font-black text-white hover:bg-[#7e86e5] disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              {prPending === change.id ? "Creating…" : "Create PR"}
+                            </button>
+                          )}
+                        </div>
+                        {change.pr_creation_status ? (
+                          <p className="mt-3 text-xs font-bold uppercase tracking-wide text-[#9e9abd]">
+                            PR status: {change.pr_creation_status}
+                            {change.pr_branch ? ` · ${change.pr_branch}` : ""}
+                          </p>
+                        ) : null}
+                        {change.pr_creation_error ? (
+                          <p className="mt-2 text-sm text-[#ff9aab]">
+                            {change.pr_creation_error}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </ExpandableRow>
                 );
               })}
